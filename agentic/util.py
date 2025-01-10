@@ -373,12 +373,10 @@ YOUR ONLY TASK TO ANSWER USER QUERY BASED ON COLLECTION AVAILABLE ON DATABASE.
 
 
 
-async def chat_bot(chat_history):
-    
-
+async def chat_bot(chat_history, recursion_step=0):
     chat_answer = await chat_request(chat_history, tools=tools, stream=False)
+    print('recursion step ', recursion_step)
     
-    output_json = {}
     if hasattr(chat_answer, 'choices') and chat_answer.choices:
         message = chat_answer.choices[0].message
         if hasattr(message, 'content') and message.content:
@@ -387,20 +385,21 @@ async def chat_bot(chat_history):
             chat_history += assistant_msg
             
         if hasattr(message, 'tool_calls') and message.tool_calls:
+            output_json = {}
+            needs_recursive_call = False
+            
             for call in message.tool_calls:
-                
-                if call.function.name == 'get_answer':  # Corrected dot notation
-
+                if call.function.name == 'get_answer':
                     print('searching answers...')
                     arguments = json.loads(call.function.arguments)
                     query = arguments['query']
                     collection_name = arguments['collection']
-                    ans,_ = await get_answer(query,collection_name)
+                    ans, _ = await get_answer(query, collection_name)
                     output_json[query] = ans['answer']
-                
+                    assistant_msg = [{"role": "assistant", "content": f"answer from database for {query}: {ans['answer']}"}]
+                    chat_history += assistant_msg
                     
-                if call.function.name == 'get_collections':
-
+                elif call.function.name == 'get_collections':
                     print('fetching collection list...')
                     collection_list = get_collections()
                     if collection_list:
@@ -408,31 +407,30 @@ async def chat_bot(chat_history):
                     else: 
                         assistant_msg = [{"role": "assistant", "content": f'database collection list is empty'}]
                     chat_history += assistant_msg
-                    chat_answer = await chat_bot(chat_history)
+                    needs_recursive_call = True
     
-                if call.function.name == 'create_pdf_collection':
-
+                elif call.function.name == 'create_pdf_collection':
                     print('creating collection...')
                     arguments = json.loads(call.function.arguments)
                     path = arguments['pdf_path']
-                    status,collection_name = create_pdf_collection(path)
-                    if status=='success':
+                    status, collection_name = create_pdf_collection(path)
+                    if status == 'success':
                         assistant_msg = [{"role": "assistant", "content": f'database collection created with collection name {collection_name}'}]
                     else:
                         assistant_msg = [{"role": "assistant", "content": f'database collection creation failed contact support'}]
                     chat_history += assistant_msg
-                    chat_answer = await chat_bot(chat_history)
-    
+                    needs_recursive_call = True
             
             if output_json:
                 print("\nGenerated JSON Output:")
                 print(json.dumps(output_json, indent=2))
-                assistant_msg = [{"role": "assistant", "content": json.dumps(output_json, indent=2)}]
-                chat_history += assistant_msg
-                # chat_answer = await chat_bot(chat_history)
-            # assistant_msg
+            
+            if needs_recursive_call:
+                chat_answer = await chat_bot(chat_history, recursion_step+1)
     
     return chat_history
+  
+  
         
 
 # out = await chat_bot(chat_history)   
