@@ -429,6 +429,82 @@ async def chat_bot(chat_history, recursion_step=0):
                 chat_answer = await chat_bot(chat_history, recursion_step+1)
     
     return chat_history
+
+
+async def chat_bot_v2(chat_history, recursion_step=0, previous_action=None):
+    print(f'recursion step {recursion_step}, previous action: {previous_action}')
+    
+    chat_answer = await chat_request(chat_history, tools=tools, stream=False)
+    
+    if hasattr(chat_answer, 'choices') and chat_answer.choices:
+        message = chat_answer.choices[0].message
+        if hasattr(message, 'content') and message.content:
+            print(f"\nResponse: {message.content}")
+            assistant_msg = [{"role": "assistant", "content": message.content}]
+            chat_history += assistant_msg
+            
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            output_json = {}
+            current_action = None
+            tool_calls_processed = False
+            
+            # First check if we have any get_answer calls
+            has_get_answer = any(call.function.name == 'get_answer' for call in message.tool_calls)
+            
+            for call in message.tool_calls:
+                # Handle get_answer differently - allow multiple in first pass
+                if call.function.name == 'get_answer' and (previous_action != 'get_answer' or recursion_step == 0):
+                    print('searching answers...')
+                    arguments = json.loads(call.function.arguments)
+                    query = arguments['query']
+                    collection_name = arguments['collection']
+                    ans, _ = await get_answer(query, collection_name)
+                    output_json[query] = ans['answer']
+                    assistant_msg = [{"role": "assistant", "content": f"answer from database for {query}: {ans['answer']}"}]
+                    chat_history += assistant_msg
+                    current_action = 'get_answer'
+                    tool_calls_processed = True
+                    
+                # For other tools, keep the previous behavior
+                elif call.function.name == 'get_collections' and previous_action != 'get_collections':
+                    print('fetching collection list...')
+                    collection_list = get_collections()
+                    if collection_list:
+                        assistant_msg = [{"role": "assistant", "content": f'database collection list {collection_list}'}]
+                    else: 
+                        assistant_msg = [{"role": "assistant", "content": f'database collection list is empty'}]
+                    chat_history += assistant_msg
+                    current_action = 'get_collections'
+                    tool_calls_processed = True
+                    break
+    
+                elif call.function.name == 'create_pdf_collection' and previous_action != 'create_pdf_collection':
+                    print('creating collection...')
+                    arguments = json.loads(call.function.arguments)
+                    path = arguments['pdf_path']
+                    status, collection_name = create_pdf_collection(path)
+                    if status == 'success':
+                        assistant_msg = [{"role": "assistant", "content": f'database collection created with collection name {collection_name}'}]
+                    else:
+                        assistant_msg = [{"role": "assistant", "content": f'database collection creation failed contact support'}]
+                    chat_history += assistant_msg
+                    current_action = 'create_pdf_collection'
+                    tool_calls_processed = True
+                    break
+            
+            if output_json:
+                print("\nGenerated JSON Output:")
+                print(json.dumps(output_json, indent=2))
+            
+            # Make recursive call only if:
+            # 1. We processed some tool calls
+            # 2. We're either in step 0 with get_answer calls or have a different action
+            if tool_calls_processed and ((recursion_step == 0 and has_get_answer) or 
+               (current_action and current_action != previous_action)):
+                print(f'Making recursive call with previous_action: {current_action}')
+                chat_answer = await chat_bot(chat_history, recursion_step + 1, current_action)
+    
+    return chat_history
   
   
         
