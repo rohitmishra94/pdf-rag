@@ -95,8 +95,8 @@ def sample_function(param_1, param_2, the_third_one: int, some_optional="John Do
     """
     print("Hello, world")
 
-schema =  function_to_schema(sample_function)
-print(json.dumps(schema, indent=2))
+# schema =  function_to_schema(sample_function)
+# print(json.dumps(schema, indent=2))
 
 from chromadb.utils import embedding_functions
 from FlagEmbedding import FlagReranker
@@ -230,9 +230,10 @@ def get_answer(query,context):
   response = chat_completion_request(msg)
   print('got response')
   total_tokens = response.usage.total_tokens
-  output = json.loads(response.choices[0].message.content)['answer']
+  output = json.loads(response.choices[0].message.content)
+  print(output)
 
-  return output
+  return output['answer']
 
 def get_context_based_on_index(query,index_file_path):
   '''
@@ -500,13 +501,14 @@ main_agent = Agent(
     model="gpt-4o-mini",
     instructions='''
     You are a helpful Agent. Your task is to provide answer based on pdf path provide by user.
+    Always greet firsttime and state your purpose. Do not assume any other role.
     You have access to below tools:
-    transfer_to_index_agent: use this to transfer the query to index based answerin agent if index exists.
-    transfer_to_collection_agent: use this to transfer the query to collection based answerin agent if collection exists.
+    transfer_to_index_agent: use this to transfer the query to index based answering agent .
+    transfer_to_collection_agent: use this to transfer the query to collection based answering agent .
 
     workflow:
-    always go for index based anwer route to answer query ,if sufficent answer not found then try for collection based answer route.
-
+    always go for index based anwering route to answer query ,if sufficent answer not found or No data available to answer 
+    then try for collection based answering route. 
     ''',
     tools = [transfer_to_index_agent,tranfer_to_collection_agent]
 )
